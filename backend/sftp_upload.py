@@ -100,6 +100,24 @@ def upload_file(
             _log("ERROR", f"[ローカルファイル不存在] {os.path.basename(local_file)}: {local_file}")
             raise FileNotFoundError(f"Local file not found: {local_file}")
         
+        # Get local file info
+        local_stat = os.stat(local_file)
+        local_mtime = int(local_stat.st_mtime)
+        local_size = local_stat.st_size
+        
+        # Check if remote file exists and has same timestamp and size
+        try:
+            remote_stat = sftp.stat(remote_file)
+            remote_mtime = int(remote_stat.st_mtime)
+            remote_size = remote_stat.st_size
+            
+            if local_mtime == remote_mtime and local_size == remote_size:
+                _log("INFO", f"[スキップ] {os.path.basename(local_file)} (リモートに同一タイムスタンプ・サイズのファイルが存在)")
+                return {'file_size': 0, 'status': 'skipped'}
+        except IOError:
+            # Remote file doesn't exist, proceed with upload
+            pass
+        
         # Ensure remote directory exists
         remote_dir = os.path.dirname(remote_file)
         _log("DEBUG", f"[リモートディレクトリ確保] {remote_dir}")
@@ -120,7 +138,6 @@ def upload_file(
             _log("WARN", f"[リモートファイル確認失敗] {remote_file}", detail=str(e))
         
         # Set remote file timestamp to match local
-        local_stat = os.stat(local_file)
         sftp.utime(remote_file, (local_stat.st_atime, local_stat.st_mtime))
         
         _log("INFO", f"[アップロード完了] {os.path.basename(local_file)}")
@@ -182,6 +199,7 @@ def upload_folder(
     stats = {
         'uploaded_files': 0,
         'uploaded_bytes': 0,
+        'skipped_files': 0,
         'deleted_files': 0,
         'error_files': 0,
     }
@@ -222,9 +240,12 @@ def upload_folder(
 
             try:
                 result = upload_file(sftp, local_file, remote_file, _log)
-                stats['uploaded_files'] += 1
-                stats['uploaded_bytes'] += result['file_size']
-                uploaded_files.append(local_file)
+                if result['status'] == 'skipped':
+                    stats['skipped_files'] += 1
+                else:
+                    stats['uploaded_files'] += 1
+                    stats['uploaded_bytes'] += result['file_size']
+                    uploaded_files.append(local_file)
             except Exception as e:
                 stats['error_files'] += 1
                 _log("ERROR", f"ファイルアップロード失敗: {rel_path}", detail=str(e))
@@ -277,7 +298,7 @@ def upload_folder(
                 pass
 
     uploaded_mb = stats['uploaded_bytes'] / (1024 * 1024)
-    _log("INFO", f"SFTPアップロード完了: アップロード={stats['uploaded_files']}件 ({uploaded_mb:.2f}MB), 削除={stats['deleted_files']}件, エラー={stats['error_files']}件")
+    _log("INFO", f"SFTPアップロード完了: アップロード={stats['uploaded_files']}件 ({uploaded_mb:.2f}MB), スキップ={stats['skipped_files']}件, 削除={stats['deleted_files']}件, エラー={stats['error_files']}件")
 
     return stats
 
@@ -315,6 +336,7 @@ def watch_and_upload(
     total_stats = {
         'uploaded_files': 0,
         'uploaded_bytes': 0,
+        'skipped_files': 0,
         'deleted_files': 0,
         'error_files': 0,
     }
@@ -366,12 +388,13 @@ def watch_and_upload(
 
             total_stats['uploaded_files'] += stats['uploaded_files']
             total_stats['uploaded_bytes'] += stats['uploaded_bytes']
+            total_stats['skipped_files'] += stats['skipped_files']
             total_stats['deleted_files'] += stats['deleted_files']
             total_stats['error_files'] += stats['error_files']
 
-            if stats['uploaded_files'] > 0:
+            if stats['uploaded_files'] > 0 or stats['skipped_files'] > 0:
                 uploaded_mb = stats['uploaded_bytes'] / (1024 * 1024)
-                _log("INFO", f"[監視サイクル {cycle_count}] アップロード={stats['uploaded_files']}件 ({uploaded_mb:.2f}MB), 削除={stats['deleted_files']}件")
+                _log("INFO", f"[監視サイクル {cycle_count}] アップロード={stats['uploaded_files']}件 ({uploaded_mb:.2f}MB), スキップ={stats['skipped_files']}件, 削除={stats['deleted_files']}件")
 
         except Exception as e:
             _log("ERROR", f"[監視サイクル {cycle_count}] アップロード処理エラー", detail=str(e))
@@ -387,6 +410,6 @@ def watch_and_upload(
     _log("WARN", f"SFTPアップロード監視停止: 合計{cycle_count}サイクル実行")
     
     total_mb = total_stats['uploaded_bytes'] / (1024 * 1024)
-    _log("INFO", f"SFTPアップロード監視終了: 総アップロード={total_stats['uploaded_files']}件 ({total_mb:.2f}MB), 総削除={total_stats['deleted_files']}件, エラー={total_stats['error_files']}件")
+    _log("INFO", f"SFTPアップロード監視終了: 総アップロード={total_stats['uploaded_files']}件 ({total_mb:.2f}MB), 総スキップ={total_stats['skipped_files']}件, 総削除={total_stats['deleted_files']}件, エラー={total_stats['error_files']}件")
     
     return total_stats

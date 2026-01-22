@@ -132,6 +132,13 @@ def compress_images_in_folder(
             # Calculate relative path for output
             rel_path = os.path.relpath(input_file, input_dir)
             output_file = os.path.join(output_dir, rel_path)
+            output_jpeg = Path(output_file).with_suffix('.jpg')
+
+            # Skip if output file already exists
+            if output_jpeg.exists():
+                stats['skipped_files'] += 1
+                log('INFO', f'スキップ: {rel_path} (出力先に既に存在)')
+                continue
 
             try:
                 result = compress_image(input_file, output_file, quality)
@@ -236,13 +243,10 @@ def watch_and_compress(
                 output_file = os.path.join(output_dir, rel_path)
                 output_jpeg = Path(output_file).with_suffix('.jpg')
 
-                # Check if output file exists and is newer than input
+                # Skip if output file already exists
                 if output_jpeg.exists():
-                    input_mtime = os.path.getmtime(input_file)
-                    output_mtime = os.path.getmtime(str(output_jpeg))
-                    if output_mtime >= input_mtime:
-                        cycle_skipped += 1
-                        continue
+                    cycle_skipped += 1
+                    continue
 
                 try:
                     result = compress_image(input_file, output_file, quality)

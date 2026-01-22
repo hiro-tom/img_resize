@@ -160,12 +160,17 @@ def sync_once(settings: SftpSettings, log, should_stop=None) -> Dict[str, int]:
                 target_file.parent.mkdir(parents=True, exist_ok=True)
 
                 local_stat = local_index.get(rel_path)
-                # Always sync - check for differences and log them
+                
+                # Check if file already exists with same timestamp and size
                 if local_stat:
                     local_mtime = int(local_stat.st_mtime)
                     remote_mtime = int(attrs.st_mtime)
+                    
+                    # Skip if timestamp and size are identical
                     if local_mtime == remote_mtime and local_stat.st_size == attrs.st_size:
-                        log("INFO", f"[同期] {rel_path} (差異なし - 念のため同期)")
+                        log("INFO", f"[スキップ] {rel_path} (タイムスタンプとサイズが同一)")
+                        skipped += 1
+                        continue
                     elif local_mtime < remote_mtime:
                         log("INFO", f"[上書き] {rel_path} (リモートが新しい: ローカル={local_mtime}, リモート={remote_mtime})")
                     elif local_mtime > remote_mtime:
