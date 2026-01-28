@@ -19,6 +19,8 @@ def compress_image(
     input_path: str,
     output_path: str,
     quality: int = 85,
+    dpi_horizontal: Optional[int] = None,
+    dpi_vertical: Optional[int] = None,
 ) -> dict:
     """
     Compress a single image file.
@@ -27,6 +29,8 @@ def compress_image(
         input_path: Source image file path
         output_path: Destination file path
         quality: Compression quality (1-100)
+        dpi_horizontal: Horizontal DPI for resize (None to keep original)
+        dpi_vertical: Vertical DPI for resize (None to keep original)
 
     Returns:
         dict with original_size, compressed_size, and saved_bytes
@@ -45,12 +49,30 @@ def compress_image(
         elif img.mode != 'RGB':
             img = img.convert('RGB')
 
+        # Resize based on DPI if specified
+        if dpi_horizontal is not None and dpi_vertical is not None:
+            # Get current DPI (default to 72 if not set)
+            current_dpi = img.info.get('dpi', (72, 72))
+            current_h_dpi = current_dpi[0] if isinstance(current_dpi, tuple) else 72
+            current_v_dpi = current_dpi[1] if isinstance(current_dpi, tuple) else 72
+            
+            # Calculate new size based on DPI ratio
+            width, height = img.size
+            new_width = int(width * dpi_horizontal / current_h_dpi)
+            new_height = int(height * dpi_vertical / current_v_dpi)
+            
+            # Resize image using high-quality Lanczos resampling
+            img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+
         # Ensure output directory exists
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-        # Save as JPEG with specified quality
+        # Save as JPEG with specified quality and DPI
         output_jpeg = Path(output_path).with_suffix('.jpg')
-        img.save(str(output_jpeg), 'JPEG', quality=quality, optimize=True)
+        save_kwargs = {'format': 'JPEG', 'quality': quality, 'optimize': True}
+        if dpi_horizontal is not None and dpi_vertical is not None:
+            save_kwargs['dpi'] = (dpi_horizontal, dpi_vertical)
+        img.save(str(output_jpeg), **save_kwargs)
 
     compressed_size = os.path.getsize(str(output_jpeg))
 
@@ -66,6 +88,8 @@ def compress_images_in_folder(
     input_dir: str,
     output_dir: str,
     quality: int = 85,
+    dpi_horizontal: Optional[int] = None,
+    dpi_vertical: Optional[int] = None,
     log_callback: Optional[Callable[[str, str, Optional[str]], None]] = None,
     stop_check: Optional[Callable[[], bool]] = None,
 ) -> dict:
@@ -76,6 +100,8 @@ def compress_images_in_folder(
         input_dir: Source directory containing images
         output_dir: Destination directory for compressed images
         quality: Compression quality (1-100)
+        dpi_horizontal: Horizontal DPI for resize (None to keep original)
+        dpi_vertical: Vertical DPI for resize (None to keep original)
         log_callback: Function to log messages (level, message, detail)
         stop_check: Function to check if operation should stop
 
@@ -103,6 +129,8 @@ def compress_images_in_folder(
     output_path.mkdir(parents=True, exist_ok=True)
     log("INFO", f"画像圧縮処理開始: {input_dir} → {output_dir}")
     log("INFO", f"圧縮品質: {quality}")
+    if dpi_horizontal is not None and dpi_vertical is not None:
+        log("INFO", f"DPIリサイズ: 横={dpi_horizontal}dpi, 縦={dpi_vertical}dpi")
 
     stats = {
         'total_files': 0,
@@ -141,7 +169,7 @@ def compress_images_in_folder(
                 continue
 
             try:
-                result = compress_image(input_file, output_file, quality)
+                result = compress_image(input_file, output_file, quality, dpi_horizontal, dpi_vertical)
                 stats['compressed_files'] += 1
                 stats['total_saved_bytes'] += result['saved_bytes']
 
@@ -165,6 +193,8 @@ def watch_and_compress(
     input_dir: str,
     output_dir: str,
     quality: int = 85,
+    dpi_horizontal: Optional[int] = None,
+    dpi_vertical: Optional[int] = None,
     log_callback: Optional[Callable[[str, str, Optional[str]], None]] = None,
     stop_check: Optional[Callable[[], bool]] = None,
     interval: float = 5.0,
@@ -176,6 +206,8 @@ def watch_and_compress(
         input_dir: Source directory containing images
         output_dir: Destination directory for compressed images
         quality: Compression quality (1-100)
+        dpi_horizontal: Horizontal DPI for resize (None to keep original)
+        dpi_vertical: Vertical DPI for resize (None to keep original)
         log_callback: Function to log messages (level, message, detail)
         stop_check: Function to check if operation should stop
         interval: Seconds between each scan cycle
@@ -217,6 +249,8 @@ def watch_and_compress(
 
     log("INFO", f"画像圧縮監視開始: {input_dir} → {output_dir}")
     log("INFO", f"監視間隔: {interval}秒, 圧縮品質: {quality}")
+    if dpi_horizontal is not None and dpi_vertical is not None:
+        log("INFO", f"DPIリサイズ: 横={dpi_horizontal}dpi, 縦={dpi_vertical}dpi")
 
     while not (stop_check and stop_check()):
         cycle_count += 1
@@ -249,7 +283,7 @@ def watch_and_compress(
                     continue
 
                 try:
-                    result = compress_image(input_file, output_file, quality)
+                    result = compress_image(input_file, output_file, quality, dpi_horizontal, dpi_vertical)
                     cycle_compressed += 1
                     total_stats['compressed_files'] += 1
                     total_stats['total_saved_bytes'] += result['saved_bytes']

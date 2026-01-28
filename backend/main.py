@@ -290,7 +290,7 @@ def root_page():
                                 async function editSettings() {
                                         try {
                                                 const current = await api('/settings');
-                                                const s = current || { host:'', port:22, username:'', password:null, private_key_path:'', remote_dir:'', local_dir:'', compress_output_dir:'', compress_quality:85, remote_output_dir:'' };
+                                                const s = current || { host:'', port:22, username:'', password:null, private_key_path:'', remote_dir:'', local_dir:'', compress_output_dir:'', compress_quality:85, resize_dpi_horizontal:null, resize_dpi_vertical:null, remote_output_dir:'' };
                                                 const hasPassword = s.password === '********';
                                                 panel.innerHTML = `
                                                     <div class=\"tag\">Settings</div>
@@ -315,6 +315,11 @@ def root_page():
                                                         <label>画像圧縮率 (compress_quality: 1-100)</label>
                                                         <input id=\"f_quality\" type=\"number\" min=\"1\" max=\"100\" value=\"${s.compress_quality ?? 85}\" />
                                                         <p style=\"color:#94a3b8; font-size:12px; margin:4px 0 10px\">※数値が大きいほど高画質（ファイルサイズ大）、小さいほど低画質（ファイルサイズ小）</p>
+                                                        <label>リサイズDPI - 横方向 (resize_dpi_horizontal)</label>
+                                                        <input id=\"f_dpi_h\" type=\"number\" min=\"1\" value=\"${s.resize_dpi_horizontal ?? ''}\" placeholder=\"未設定の場合は元のサイズを保持\" />
+                                                        <label>リサイズDPI - 縦方向 (resize_dpi_vertical)</label>
+                                                        <input id=\"f_dpi_v\" type=\"number\" min=\"1\" value=\"${s.resize_dpi_vertical ?? ''}\" placeholder=\"未設定の場合は元のサイズを保持\" />
+                                                        <p style=\"color:#94a3b8; font-size:12px; margin:4px 0 10px\">※DPI値を指定すると画像サイズが変更されます。両方とも未入力の場合は元のサイズを保持します</p>
                                                         <label>SFTP取込 監視間隔 (sync_interval_seconds)</label>
                                                         <input id=\"f_sync_interval\" type=\"number\" min=\"1\" value=\"${s.sync_interval_seconds ?? 5}\" />
                                                         <p style=\"color:#94a3b8; font-size:12px; margin:4px 0 10px\">※秒単位: SFTPから取込処理の監視間隔</p>
@@ -345,6 +350,8 @@ def root_page():
                                                             local_dir: (document.getElementById('f_local')).value,
                                                             compress_output_dir: (document.getElementById('f_compress')).value,
                                                             compress_quality: parseInt((document.getElementById('f_quality')).value || '85'),
+                                                            resize_dpi_horizontal: parseInt((document.getElementById('f_dpi_h')).value) || null,
+                                                            resize_dpi_vertical: parseInt((document.getElementById('f_dpi_v')).value) || null,
                                                             sync_interval_seconds: parseInt((document.getElementById('f_sync_interval')).value || '5'),
                                                             compress_interval_seconds: parseInt((document.getElementById('f_compress_interval')).value || '10'),
                                                             upload_interval_seconds: parseInt((document.getElementById('f_upload_interval')).value || '10'),
@@ -396,6 +403,8 @@ def root_page():
                                                             local_dir: (document.getElementById('f_local')).value,
                                                             compress_output_dir: (document.getElementById('f_compress')).value,
                                                             compress_quality: parseInt((document.getElementById('f_quality')).value || '85'),
+                                                            resize_dpi_horizontal: parseInt((document.getElementById('f_dpi_h')).value) || null,
+                                                            resize_dpi_vertical: parseInt((document.getElementById('f_dpi_v')).value) || null,
                                                             sync_interval_seconds: parseInt((document.getElementById('f_sync_interval')).value || '5'),
                                                             compress_interval_seconds: parseInt((document.getElementById('f_compress_interval')).value || '10'),
                                                             upload_interval_seconds: parseInt((document.getElementById('f_upload_interval')).value || '10'),
@@ -924,13 +933,15 @@ def _run_compress() -> None:
 
     try:
         quality = settings.compress_quality if settings.compress_quality else 85
+        dpi_h = settings.resize_dpi_horizontal if hasattr(settings, 'resize_dpi_horizontal') else None
+        dpi_v = settings.resize_dpi_vertical if hasattr(settings, 'resize_dpi_vertical') else None
 
         # 秒数が0の場合は1回のみ実行
         if settings.compress_interval_seconds == 0:
             _log("INFO", "画像圧縮: 1回のみ実行モード")
             try:
                 from image_compress import compress_images_in_folder as compress_once_func
-                compress_once_func(settings.local_dir, settings.compress_output_dir, quality, _log)
+                compress_once_func(settings.local_dir, settings.compress_output_dir, quality, dpi_h, dpi_v, _log)
                 _log("INFO", "画像圧縮監視終了: 1回実行完了")
             except Exception as exc:  # noqa: BLE001
                 _log("ERROR", "画像圧縮エラー", detail=str(exc))
@@ -939,6 +950,8 @@ def _run_compress() -> None:
                 input_dir=settings.local_dir,
                 output_dir=settings.compress_output_dir,
                 quality=quality,
+                dpi_horizontal=dpi_h,
+                dpi_vertical=dpi_v,
                 log_callback=_log,
                 stop_check=_check_compress_stop_requested,
                 interval=float(settings.compress_interval_seconds),
