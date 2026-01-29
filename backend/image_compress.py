@@ -19,6 +19,8 @@ def compress_image(
     input_path: str,
     output_path: str,
     quality: int = 85,
+    resize_width: Optional[int] = None,
+    resize_height: Optional[int] = None,
 ) -> dict:
     """
     Compress a single image file.
@@ -27,6 +29,8 @@ def compress_image(
         input_path: Source image file path
         output_path: Destination file path
         quality: Compression quality (1-100)
+        resize_width: Target width in pixels (optional)
+        resize_height: Target height in pixels (optional)
 
     Returns:
         dict with original_size, compressed_size, and saved_bytes
@@ -34,6 +38,8 @@ def compress_image(
     original_size = os.path.getsize(input_path)
 
     with Image.open(input_path) as img:
+        original_dimensions = img.size  # (width, height)
+
         # Convert to RGB if necessary (for PNG with alpha, etc.)
         if img.mode in ('RGBA', 'LA', 'P'):
             # Create white background for transparent images
@@ -45,12 +51,18 @@ def compress_image(
         elif img.mode != 'RGB':
             img = img.convert('RGB')
 
+        # Resize if dimensions are specified
+        if resize_width and resize_height:
+            img = img.resize((resize_width, resize_height), Image.Resampling.LANCZOS)
+
         # Ensure output directory exists
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
         # Save as JPEG with specified quality
         output_jpeg = Path(output_path).with_suffix('.jpg')
         img.save(str(output_jpeg), 'JPEG', quality=quality, optimize=True)
+
+        new_dimensions = img.size
 
     compressed_size = os.path.getsize(str(output_jpeg))
 
@@ -59,6 +71,8 @@ def compress_image(
         'compressed_size': compressed_size,
         'saved_bytes': original_size - compressed_size,
         'output_path': str(output_jpeg),
+        'original_dimensions': original_dimensions,
+        'new_dimensions': new_dimensions,
     }
 
 
@@ -68,6 +82,8 @@ def compress_images_in_folder(
     quality: int = 85,
     log_callback: Optional[Callable[[str, str, Optional[str]], None]] = None,
     stop_check: Optional[Callable[[], bool]] = None,
+    resize_width: Optional[int] = None,
+    resize_height: Optional[int] = None,
 ) -> dict:
     """
     Compress all images in a folder.
@@ -103,6 +119,8 @@ def compress_images_in_folder(
     output_path.mkdir(parents=True, exist_ok=True)
     log("INFO", f"画像圧縮処理開始: {input_dir} → {output_dir}")
     log("INFO", f"圧縮品質: {quality}")
+    if resize_width and resize_height:
+        log("INFO", f"リサイズ設定: {resize_width}×{resize_height}dpi")
 
     stats = {
         'total_files': 0,
@@ -134,14 +152,17 @@ def compress_images_in_folder(
             output_file = os.path.join(output_dir, rel_path)
 
             try:
-                result = compress_image(input_file, output_file, quality)
+                result = compress_image(input_file, output_file, quality, resize_width, resize_height)
                 stats['compressed_files'] += 1
                 stats['total_saved_bytes'] += result['saved_bytes']
 
                 original_kb = result['original_size'] / 1024
                 compressed_kb = result['compressed_size'] / 1024
                 saved_kb = result['saved_bytes'] / 1024
-                log("INFO", f"圧縮完了: {rel_path} ({original_kb:.1f}KB → {compressed_kb:.1f}KB, 削減: {saved_kb:.1f}KB)")
+                orig_dim = result.get('original_dimensions', (0, 0))
+                new_dim = result.get('new_dimensions', (0, 0))
+                resize_info = f", {orig_dim[0]}×{orig_dim[1]} → {new_dim[0]}×{new_dim[1]}" if resize_width and resize_height else ""
+                log("INFO", f"圧縮完了: {rel_path} ({original_kb:.1f}KB → {compressed_kb:.1f}KB, 削減: {saved_kb:.1f}KB{resize_info})")
 
             except Exception as e:
                 stats['error_files'] += 1
@@ -161,6 +182,8 @@ def watch_and_compress(
     log_callback: Optional[Callable[[str, str, Optional[str]], None]] = None,
     stop_check: Optional[Callable[[], bool]] = None,
     interval: float = 5.0,
+    resize_width: Optional[int] = None,
+    resize_height: Optional[int] = None,
 ) -> dict:
     """
     Continuously watch input folder and compress new/modified images.
@@ -209,7 +232,8 @@ def watch_and_compress(
     cycle_count = 0
 
     log("INFO", f"画像圧縮監視開始: {input_dir} → {output_dir}")
-    log("INFO", f"監視間隔: {interval}秒, 圧縮品質: {quality}")
+    resize_info = f", リサイズ: {resize_width}×{resize_height}dpi" if resize_width and resize_height else ""
+    log("INFO", f"監視間隔: {interval}秒, 圧縮品質: {quality}{resize_info}")
 
     while not (stop_check and stop_check()):
         cycle_count += 1
@@ -245,7 +269,7 @@ def watch_and_compress(
                         continue
 
                 try:
-                    result = compress_image(input_file, output_file, quality)
+                    result = compress_image(input_file, output_file, quality, resize_width, resize_height)
                     cycle_compressed += 1
                     total_stats['compressed_files'] += 1
                     total_stats['total_saved_bytes'] += result['saved_bytes']
@@ -253,7 +277,10 @@ def watch_and_compress(
                     original_kb = result['original_size'] / 1024
                     compressed_kb = result['compressed_size'] / 1024
                     saved_kb = result['saved_bytes'] / 1024
-                    log("INFO", f"圧縮完了: {rel_path} ({original_kb:.1f}KB → {compressed_kb:.1f}KB, 削減: {saved_kb:.1f}KB)")
+                    orig_dim = result.get('original_dimensions', (0, 0))
+                    new_dim = result.get('new_dimensions', (0, 0))
+                    dim_info = f", {orig_dim[0]}×{orig_dim[1]} → {new_dim[0]}×{new_dim[1]}" if resize_width and resize_height else ""
+                    log("INFO", f"圧縮完了: {rel_path} ({original_kb:.1f}KB → {compressed_kb:.1f}KB, 削減: {saved_kb:.1f}KB{dim_info})")
 
                 except Exception as e:
                     cycle_errors += 1

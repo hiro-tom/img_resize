@@ -315,6 +315,13 @@ def root_page():
                                                         <label>画像圧縮率 (compress_quality: 1-100)</label>
                                                         <input id=\"f_quality\" type=\"number\" min=\"1\" max=\"100\" value=\"${s.compress_quality ?? 85}\" />
                                                         <p style=\"color:#94a3b8; font-size:12px; margin:4px 0 10px\">※数値が大きいほど高画質（ファイルサイズ大）、小さいほど低画質（ファイルサイズ小）</p>
+                                                        <label>画像サイズ (横dpi × 縦dpi)</label>
+                                                        <div style=\"display:flex; gap:8px; align-items:center;\">
+                                                            <input id=\"f_resize_width\" type=\"number\" min=\"1\" value=\"${s.resize_width_dpi || ''}\" placeholder=\"横dpi\" style=\"width:120px;\" />
+                                                            <span style=\"color:#94a3b8;\">×</span>
+                                                            <input id=\"f_resize_height\" type=\"number\" min=\"1\" value=\"${s.resize_height_dpi || ''}\" placeholder=\"縦dpi\" style=\"width:120px;\" />
+                                                        </div>
+                                                        <p style=\"color:#94a3b8; font-size:12px; margin:4px 0 10px\">※未入力の場合はリサイズしません。両方入力すると指定サイズにリサイズします。</p>
                                                         <label>SFTP取込 監視間隔 (sync_interval_seconds)</label>
                                                         <input id=\"f_sync_interval\" type=\"number\" min=\"1\" value=\"${s.sync_interval_seconds ?? 5}\" />
                                                         <p style=\"color:#94a3b8; font-size:12px; margin:4px 0 10px\">※秒単位: SFTPから取込処理の監視間隔</p>
@@ -335,6 +342,8 @@ def root_page():
                                                     const testBtn = document.getElementById('testSettings');
                                                     try {
                                                         const passwordValue = (document.getElementById('f_pass')).value;
+                                                        const resizeWidth = (document.getElementById('f_resize_width')).value;
+                                                        const resizeHeight = (document.getElementById('f_resize_height')).value;
                                                         const payload = {
                                                             host: (document.getElementById('f_host')).value,
                                                             port: parseInt((document.getElementById('f_port')).value || '22'),
@@ -345,6 +354,8 @@ def root_page():
                                                             local_dir: (document.getElementById('f_local')).value,
                                                             compress_output_dir: (document.getElementById('f_compress')).value,
                                                             compress_quality: parseInt((document.getElementById('f_quality')).value || '85'),
+                                                            resize_width_dpi: resizeWidth ? parseInt(resizeWidth) : null,
+                                                            resize_height_dpi: resizeHeight ? parseInt(resizeHeight) : null,
                                                             sync_interval_seconds: parseInt((document.getElementById('f_sync_interval')).value || '5'),
                                                             compress_interval_seconds: parseInt((document.getElementById('f_compress_interval')).value || '10'),
                                                             upload_interval_seconds: parseInt((document.getElementById('f_upload_interval')).value || '10'),
@@ -386,6 +397,8 @@ def root_page():
                                                         testBtn.disabled = true;
 
                                                         const passwordValue = (document.getElementById('f_pass')).value;
+                                                        const testResizeWidth = (document.getElementById('f_resize_width')).value;
+                                                        const testResizeHeight = (document.getElementById('f_resize_height')).value;
                                                         const payload = {
                                                             host: (document.getElementById('f_host')).value,
                                                             port: parseInt((document.getElementById('f_port')).value || '22'),
@@ -396,6 +409,8 @@ def root_page():
                                                             local_dir: (document.getElementById('f_local')).value,
                                                             compress_output_dir: (document.getElementById('f_compress')).value,
                                                             compress_quality: parseInt((document.getElementById('f_quality')).value || '85'),
+                                                            resize_width_dpi: testResizeWidth ? parseInt(testResizeWidth) : null,
+                                                            resize_height_dpi: testResizeHeight ? parseInt(testResizeHeight) : null,
                                                             sync_interval_seconds: parseInt((document.getElementById('f_sync_interval')).value || '5'),
                                                             compress_interval_seconds: parseInt((document.getElementById('f_compress_interval')).value || '10'),
                                                             upload_interval_seconds: parseInt((document.getElementById('f_upload_interval')).value || '10'),
@@ -924,13 +939,15 @@ def _run_compress() -> None:
 
     try:
         quality = settings.compress_quality if settings.compress_quality else 85
+        resize_width = settings.resize_width_dpi
+        resize_height = settings.resize_height_dpi
 
         # 秒数が0の場合は1回のみ実行
         if settings.compress_interval_seconds == 0:
             _log("INFO", "画像圧縮: 1回のみ実行モード")
             try:
                 from image_compress import compress_images_in_folder as compress_once_func
-                compress_once_func(settings.local_dir, settings.compress_output_dir, quality, _log)
+                compress_once_func(settings.local_dir, settings.compress_output_dir, quality, _log, None, resize_width, resize_height)
                 _log("INFO", "画像圧縮監視終了: 1回実行完了")
             except Exception as exc:  # noqa: BLE001
                 _log("ERROR", "画像圧縮エラー", detail=str(exc))
@@ -942,6 +959,8 @@ def _run_compress() -> None:
                 log_callback=_log,
                 stop_check=_check_compress_stop_requested,
                 interval=float(settings.compress_interval_seconds),
+                resize_width=resize_width,
+                resize_height=resize_height,
             )
 
             saved_mb = stats['total_saved_bytes'] / (1024 * 1024)

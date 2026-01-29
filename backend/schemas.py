@@ -12,6 +12,8 @@ class SftpSettings(BaseModel):
     local_dir: str = Field(..., description="Local client directory to sync")
     compress_output_dir: Optional[str] = Field(None, description="Image compression output directory")
     compress_quality: int = Field(85, description="Image compression quality (1-100)")
+    resize_width_dpi: Optional[int] = Field(None, description="Output image width in pixels (dpi)")
+    resize_height_dpi: Optional[int] = Field(None, description="Output image height in pixels (dpi)")
     remote_output_dir: Optional[str] = Field(None, description="SFTP remote directory output destination")
     sync_interval_seconds: int = Field(5, description="SFTP sync watch interval in seconds")
     compress_interval_seconds: int = Field(10, description="Image compression watch interval in seconds")
