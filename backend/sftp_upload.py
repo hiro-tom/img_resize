@@ -197,6 +197,7 @@ def upload_folder(
                 _log("ERROR", f"ファイルアップロード失敗: {rel_path}", detail=str(e))
 
         # Delete uploaded files if requested
+        _log("INFO", f"[DEBUG] delete_after_upload={delete_after_upload}, uploaded_files count={len(uploaded_files)}")
         if delete_after_upload and uploaded_files:
             _log("INFO", f"アップロード完了ファイルの削除開始: {len(uploaded_files)}件")
             

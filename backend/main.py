@@ -1047,7 +1047,7 @@ def _run_upload() -> None:
                     remote_dir=settings.remote_output_dir,
                     settings=settings,
                     log=_log,
-                    delete_after_upload=True,
+                    delete_after_upload=False,
                 )
                 uploaded_mb = stats['uploaded_bytes'] / (1024 * 1024)
                 _log("INFO", f"SFTPアップロード監視終了: アップロード={stats['uploaded_files']}件 ({uploaded_mb:.2f}MB), 削除={stats['deleted_files']}件, エラー={stats['error_files']}件")
@@ -1061,7 +1061,7 @@ def _run_upload() -> None:
                 log=_log,
                 stop_check=_check_upload_stop_requested,
                 interval=float(settings.upload_interval_seconds),
-                delete_after_upload=True,
+                delete_after_upload=False,
             )
 
             uploaded_mb = stats['uploaded_bytes'] / (1024 * 1024)
